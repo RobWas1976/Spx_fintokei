@@ -2,39 +2,32 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.set_page_config(page_title="SPX Skew Mobile", layout="centered")
-st.title("📊 SPX / ES Skew Sentiment")
+st.title("📊 SPX / ES Option Skew")
 
-# Pole do wklejenia danych (Input Area)
-st.subheader("Wklej tabelę z Barchart:")
-user_input = st.text_area("Czekam na dane (Strike, IV)...", height=250)
+data = st.text_area("Wklej dane z Barchart tutaj:", height=300)
 
-if user_input:
+if data:
     try:
-        # Parsowanie danych w locie
-        df = pd.read_csv(io.StringIO(user_input), sep=None, engine='python')
+        # Naprawa cudzysłowów iPhone'a i wczytanie danych
+        clean_data = data.replace('“', '"').replace('”', '"')
+        df = pd.read_csv(io.StringIO(clean_data), on_bad_lines='skip')
         
-        # Obliczenie Skew (pierwszy wiersz IV minus ostatni wiersz IV)
-        skew_val = df['IV'].iloc[0] - df['IV'].iloc[-1]
+        # Czyszczenie nagłówków
+        df.columns = [c.replace('"', '').strip() for c in df.columns]
         
-        # Wybór sentymentu (Thresholds)
-        if skew_val > 0.05:
-            res, col = "SHORT", "#FF4B4B"
-        elif skew_val < -0.02:
-            res, col = "LONG", "#00CC96"
+        # Konwersja Strike i IV na liczby (usuwanie przecinków i %)
+        for col in ['Strike', 'IV']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(r'[%,"]', '', regex=True).astype(float)
+        
+        # Filtrowanie i rysowanie wykresu dla PUTów
+        if 'Type' in df.columns:
+            df_puts = df[df['Type'].str.contains('Put', case=False, na=False)].sort_values('Strike')
+            if not df_puts.empty:
+                st.line_chart(df_puts.set_index('Strike')['IV'])
+                st.success("Wykres wygenerowany!")
         else:
-            res, col = "NEUTRAL", "#FFA15A"
+            st.error("Błąd: Nie znaleziono kolumny 'Type'. Skopiuj tabelę z nagłówkami.")
             
-        # Wyświetlanie wyniku na iPhone
-        st.markdown(f"""
-            <div style="background-color:{col}; padding:30px; border-radius:15px; text-align:center;">
-                <h1 style="color:white; margin:0; font-size:45px;">{res}</h1>
-                <p style="color:white; font-size:18px;">Skew Delta: {skew_val:.4f}</p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        st.write("")
-        st.line_chart(df.set_index('Strike')['IV'])
-        
     except Exception as e:
-        st.error("Błąd: Upewnij się, że tabela ma nagłówki 'Strike' i 'IV'.")
+        st.error(f"Techniczny błąd: {e}")
